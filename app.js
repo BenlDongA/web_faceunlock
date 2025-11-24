@@ -3,30 +3,18 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const multer = require("multer");
 const bodyParser = require("body-parser");
-const compression = require("compression");
-const helmet = require("helmet");
 
 const app = express();
-
-// ===== MIDDLEWARE TỐI ƯU HIỆU NĂNG =====
 app.use(cors());
-app.use(helmet());
-app.use(compression()); 
-app.use(bodyParser.json({ limit: "10mb" }));
-app.use(bodyParser.urlencoded({ extended: true, limit: "10mb" }));
+app.use(bodyParser.json({ limit: "20mb" }));
+app.use(bodyParser.urlencoded({ extended: true, limit: "20mb" }));
 app.use(express.static("public"));
 
-// ===== KẾT NỐI MongoDB =====
-mongoose
-  .connect("mongodb+srv://cuong123:cuong123@cluster0.htvcj.mongodb.net/", {
-    dbName: "face_database",
-    serverSelectionTimeoutMS: 5000, 
-    socketTimeoutMS: 45000,
-  })
-  .then(() => console.log("MongoDB Connected"))
-  .catch((err) => console.log("MongoDB Error:", err));
+// --- MongoDB ---
+mongoose.connect("mongodb+srv://cuong123:cuong123@cluster0.htvcj.mongodb.net/", {
+  dbName: "face_database"
+});
 
-// ===== Schema =====
 const UserSchema = new mongoose.Schema({
   name: String,
   image_base64: String
@@ -34,35 +22,40 @@ const UserSchema = new mongoose.Schema({
 
 const User = mongoose.model("face_data", UserSchema);
 
-// ===== Multer =====
-const upload = multer({ storage: multer.memoryStorage() });
+// --- Multer upload ---
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
 
-// ===== VIEW =====
+// ---------------- ROUTES ----------------
+
+// Trang chủ HTML
 app.set("view engine", "ejs");
 
-// ===== ROUTES =====
-
-// Trang web chính
 app.get("/", async (req, res) => {
-  const users = await User.find().lean();
+  const users = await User.find();
   res.render("index", { users });
 });
 
-// Upload từ file
+// Upload ảnh file
 app.post("/upload_image", upload.single("image"), async (req, res) => {
+  const name = req.body.name;
   const imgBase64 = req.file.buffer.toString("base64");
-  await User.create({ name: req.body.name, image_base64: imgBase64 });
+
+  await User.create({ name, image_base64: imgBase64 });
   res.redirect("/");
 });
 
-// Upload webcam
+// Upload từ webcam
 app.post("/upload_webcam", async (req, res) => {
-  const encoded = req.body.image.split(",")[1];
-  await User.create({ name: req.body.name, image_base64: encoded });
+  const { name, image } = req.body;
+
+  const encoded = image.split(",")[1];
+
+  await User.create({ name, image_base64: encoded });
   res.json({ message: "Tải ảnh thành công!" });
 });
 
-// Xóa
+// Xoá user
 app.get("/delete/:name", async (req, res) => {
   await User.deleteOne({ name: req.params.name });
   res.redirect("/");
@@ -74,24 +67,22 @@ app.post("/rename", async (req, res) => {
   res.redirect("/");
 });
 
-// ======= API JSON =======
+// ---------- API JSON ----------
 app.get("/api/users", async (req, res) => {
-  const users = await User.find().lean();
-
+  const users = await User.find();
   res.json(
     users.map(u => ({
       _id: u._id,
       name: u.name,
-      image_url: "data:image/jpeg;base64," + u.image_base64
+      image_url: `data:image/jpeg;base64,${u.image_base64}`
     }))
   );
 });
 
 app.post("/api/upload", upload.single("image"), async (req, res) => {
-  await User.create({
-    name: req.body.name,
-    image_base64: req.file.buffer.toString("base64")
-  });
+  const name = req.body.name;
+  const imgBase64 = req.file.buffer.toString("base64");
+  await User.create({ name, image_base64: imgBase64 });
   res.json({ message: "Upload thành công!" });
 });
 
@@ -108,9 +99,5 @@ app.post("/api/rename_user", async (req, res) => {
   res.json({ message: "Đổi tên thành công!" });
 });
 
-// ======= SERVER RENDER =======
-const PORT = process.env.PORT;
-
-app.listen(PORT, () => {
-    console.log(`🚀 Server đang chạy trên cổng ${PORT}`);
-});
+// Run server
+app.listen(10000, () => console.log("Server chạy port 10000"));
