@@ -3,8 +3,6 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const multer = require("multer");
 const bodyParser = require("body-parser");
-const fs = require("fs");
-const path = require("path");
 
 const app = express();
 app.use(cors());
@@ -17,30 +15,22 @@ mongoose.connect("mongodb+srv://cuong123:cuong123@cluster0.htvcj.mongodb.net/", 
   dbName: "face_database"
 });
 
-// --- Schema ---
 const UserSchema = new mongoose.Schema({
   name: String,
-  image_path: String
+  image_base64: String
 });
 
 const User = mongoose.model("face_data", UserSchema);
 
-// --- Multer: lưu file ảnh ---
-const storage = multer.diskStorage({
-  destination: "public/uploads/",
-  filename: (req, file, cb) => {
-    const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, unique + ".jpg");
-  }
-});
+// --- Multer upload ---
+const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
-
-// --- View engine ---
-app.set("view engine", "ejs");
 
 // ---------------- ROUTES ----------------
 
 // Trang chủ HTML
+app.set("view engine", "ejs");
+
 app.get("/", async (req, res) => {
   const users = await User.find();
   res.render("index", { users });
@@ -49,51 +39,31 @@ app.get("/", async (req, res) => {
 // Upload ảnh file
 app.post("/upload_image", upload.single("image"), async (req, res) => {
   const name = req.body.name;
-  const imgPath = "/uploads/" + req.file.filename;
+  const imgBase64 = req.file.buffer.toString("base64");
 
-  await User.create({ name, image_path: imgPath });
+  await User.create({ name, image_base64: imgBase64 });
   res.redirect("/");
 });
 
-// Upload từ webcam (base64 → file)
+// Upload từ webcam
 app.post("/upload_webcam", async (req, res) => {
   const { name, image } = req.body;
 
-  const base64 = image.replace(/^data:image\/\w+;base64,/, "");
-  const buffer = Buffer.from(base64, "base64");
+  const encoded = image.split(",")[1];
 
-  const filename = `${Date.now()}.jpg`;
-  const filepath = path.join("public/uploads/", filename);
-
-  fs.writeFileSync(filepath, buffer);
-
-  await User.create({
-    name,
-    image_path: "/uploads/" + filename
-  });
-
+  await User.create({ name, image_base64: encoded });
   res.json({ message: "Tải ảnh thành công!" });
 });
 
 // Xoá user
-app.get("/delete/:id", async (req, res) => {
-  const user = await User.findById(req.params.id);
-
-  if (user) {
-    const fullPath = path.join("public", user.image_path);
-    if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
-  }
-
-  await User.deleteOne({ _id: req.params.id });
+app.get("/delete/:name", async (req, res) => {
+  await User.deleteOne({ name: req.params.name });
   res.redirect("/");
 });
 
 // Đổi tên
 app.post("/rename", async (req, res) => {
-  await User.updateOne(
-    { _id: req.body.user_id },
-    { name: req.body.new_name }
-  );
+  await User.updateOne({ _id: req.body.user_id }, { name: req.body.new_name });
   res.redirect("/");
 });
 
@@ -104,39 +74,28 @@ app.get("/api/users", async (req, res) => {
     users.map(u => ({
       _id: u._id,
       name: u.name,
-      image_url: `${req.protocol}://${req.get("host")}${u.image_path}`
+      image_url: `data:image/jpeg;base64,${u.image_base64}`
     }))
   );
 });
 
 app.post("/api/upload", upload.single("image"), async (req, res) => {
   const name = req.body.name;
-  const imgPath = "/uploads/" + req.file.filename;
-
-  await User.create({ name, image_path: imgPath });
-
+  const imgBase64 = req.file.buffer.toString("base64");
+  await User.create({ name, image_base64: imgBase64 });
   res.json({ message: "Upload thành công!" });
 });
 
 app.delete("/api/delete_user/:id", async (req, res) => {
-  const user = await User.findById(req.params.id);
+  const result = await User.deleteOne({ _id: req.params.id });
+  if (result.deletedCount === 0)
+    return res.status(404).json({ error: "Không tìm thấy user!" });
 
-  if (!user) return res.status(404).json({ error: "Không tìm thấy user!" });
-
-  const fullPath = path.join("public", user.image_path);
-  if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
-
-  await User.deleteOne({ _id: req.params.id });
-
-  res.json({ message: "Xoá thành công!" });
+  res.json({ message: "Xóa thành công!" });
 });
 
 app.post("/api/rename_user", async (req, res) => {
-  await User.updateOne(
-    { _id: req.body.user_id },
-    { name: req.body.new_name }
-  );
-
+  await User.updateOne({ _id: req.body.user_id }, { name: req.body.new_name });
   res.json({ message: "Đổi tên thành công!" });
 });
 
