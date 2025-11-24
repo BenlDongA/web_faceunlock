@@ -109,8 +109,8 @@ app.post("/api/rename_user", async (req, res) => {
 });
 
 // ======= SERVER RENDER =======
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT;
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log("🚀 Server đang chạy trên port", PORT);
+app.listen(PORT, () => {
+    console.log(`🚀 Server đang chạy trên cổng ${PORT}`);
 });
